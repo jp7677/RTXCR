@@ -1,0 +1,49 @@
+name: Build on Windows
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ v* ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Find Visual Studio
+      shell: pwsh
+      run: |
+        $installationPath = Get-VSSetupInstance `
+          | Select-VSSetupInstance -Require Microsoft.VisualStudio.Workload.NativeDesktop -Latest `
+          | Select-Object -ExpandProperty InstallationPath
+        Write-Output "VSDEVCMD=${installationPath}\Common7\Tools\VsDevCmd.bat" `
+          | Out-File -FilePath "${Env:GITHUB_ENV}" -Append
+
+    - name: Print build version
+      run: git describe --always --tags --dirty=+
+
+    - name: Build MSVC x64
+      shell: pwsh
+      run: |
+        & "${Env:COMSPEC}" /s /c "`"${Env:VSDEVCMD}`" -arch=x64 -host_arch=x64 -no_logo && set" `
+          | % { , ($_ -Split '=', 2) } `
+          | % { [System.Environment]::SetEnvironmentVariable($_[0], $_[1]) }
+        & .\build.bat
+
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: rtxcr-msvc-x64
+        path: |
+          .\bin\
+          .\build\samples\pathtracer\
